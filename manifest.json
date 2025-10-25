@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Tab History Tree Generator",
+  "version": "1.0",
+  "description": "Automatically generates tree-like structures for forward/backward history of all tabs",
+  "permissions": [
+    "tabs",
+    "history",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "View Tab History Trees"
+  }
+}
