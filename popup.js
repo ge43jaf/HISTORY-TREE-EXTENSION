@@ -41,7 +41,7 @@ class TabHistoryPopup {
         document.addEventListener('click', (e) => {
             const optionsMenu = document.getElementById('optionsMenu');
             const optionsBtn = document.getElementById('optionsBtn');
-            if (!optionsMenu.contains(e.target) && !optionsBtn.contains(e.target)) {
+            if (optionsMenu && optionsBtn && !optionsMenu.contains(e.target) && !optionsBtn.contains(e.target)) {
                 this.hideOptionsMenu();
             }
         });
@@ -122,9 +122,11 @@ class TabHistoryPopup {
         if (isCurrentTab) tabTitle += ' (Current)';
         if (isClosed) tabTitle += ' (Closed)';
         
-        const lastUpdated = new Date(tabTree.lastUpdated).toLocaleString();
-        const creationTime = new Date(tabTree.creationTime).toLocaleString();
+        const lastUpdated = this.formatDateTime(tabTree.lastUpdated);
+        const creationTime = this.formatDateTime(tabTree.creationTime);
+        const closedTime = tabTree.closedAt ? this.formatDateTime(tabTree.closedAt) : '';
         const sessionLength = tabTree.sessionHistory ? tabTree.sessionHistory.length : 0;
+        const currentPosition = (tabTree.currentIndex || 0) + 1;
         
         let treeContent = '';
         if (tabTree.tree && tabTree.tree.entry) {
@@ -142,9 +144,9 @@ class TabHistoryPopup {
                     <span>${tabTitle}</span>
                     <span class="tab-stats">
                         <span>Created: ${creationTime}</span>
-                        ${isClosed ? `<span>Closed: ${new Date(tabTree.closedAt).toLocaleString()}</span>` : ''}
-                        <span>Session: ${sessionLength} entries</span>
-                        <span>Current: ${(tabTree.currentIndex || 0) + 1}/${sessionLength}</span>
+                        ${isClosed && closedTime ? `<span>Closed: ${closedTime}</span>` : ''}
+                        <span>Entries: ${sessionLength}</span>
+                        <span>Position: ${currentPosition}/${sessionLength}</span>
                         ${!isClosed ? `<button class="tab-refresh-btn" data-tab-id="${tabTree.tabId}">Refresh</button>` : ''}
                         <button class="debug-btn" data-tab-id="${tabTree.tabId}">Debug</button>
                     </span>
@@ -169,7 +171,7 @@ class TabHistoryPopup {
         
         const nodeType = this.getNodeTypeLabel(node.entry.type);
         const historyInfo = node.entry;
-        const originalTime = new Date(node.entry.timestamp).toLocaleString();
+        const originalTime = this.formatDateTime(node.entry.timestamp);
         const title = node.entry.title || this.getDomainFromUrl(node.entry.url);
         
         return `
@@ -204,7 +206,7 @@ class TabHistoryPopup {
             <div style="margin-bottom: 15px;">
                 <div style="font-weight: bold; margin-bottom: 10px; color: #666;">Linear History (Tree building in progress):</div>
                 ${tabTree.sessionHistory.map((entry, index) => {
-                    const originalTime = new Date(entry.timestamp).toLocaleString();
+                    const originalTime = this.formatDateTime(entry.timestamp);
                     const title = entry.title || this.getDomainFromUrl(entry.url);
                     const isCurrent = index === tabTree.currentIndex;
                     
@@ -230,7 +232,7 @@ class TabHistoryPopup {
                 </div>
                 <div style="font-size: 11px; line-height: 1.4; max-height: 150px; overflow-y: auto;">
                     ${tabTree.sessionHistory.map((entry, index) => {
-                        const originalTime = new Date(entry.timestamp).toLocaleString();
+                        const originalTime = this.formatDateTime(entry.timestamp);
                         const title = entry.title || this.getDomainFromUrl(entry.url);
                         return `
                             <div style="padding: 2px 0; ${index === tabTree.currentIndex ? 'font-weight: bold; color: #4285f4;' : ''}">
@@ -290,8 +292,8 @@ class TabHistoryPopup {
             if (response && response.success) {
                 console.log('Debug info for all tabs:', response.debugInfo);
                 // Find the specific tab in debug info
-                const tabDebugInfo = response.debugInfo.activeTabs.find(tab => tab.tabId === tabId) || 
-                                   response.debugInfo.closedTabs.find(tab => tab.tabId === tabId);
+                const tabDebugInfo = response.debugInfo.activeTabs?.find(tab => tab.tabId === tabId) || 
+                                   response.debugInfo.closedTabs?.find(tab => tab.tabId === tabId);
                 if (tabDebugInfo) {
                     console.log(`Debug info for tab ${tabId}:`, tabDebugInfo);
                     alert(`Check console for debug info for tab ${tabId}`);
@@ -370,17 +372,36 @@ class TabHistoryPopup {
         }
     }
 
+    formatDateTime(timestamp) {
+        if (!timestamp || isNaN(timestamp)) {
+            return 'Unknown';
+        }
+        try {
+            const date = new Date(timestamp);
+            return date.toLocaleString();
+        } catch (e) {
+            return 'Invalid Date';
+        }
+    }
+
     async checkStatus() {
         try {
             const response = await chrome.runtime.sendMessage({ action: 'getStatus' });
             if (response && response.success) {
+                const activeTabs = response.activeTabs || 0;
+                const closedTabs = response.closedTabs || 0;
+                const totalTabs = response.trackedTabs || (activeTabs + closedTabs);
+                const totalEntries = response.totalSessionEntries || 0;
+                
                 document.getElementById('totalTabs').textContent = 
-                    `${response.trackedTabs} total tabs (${response.activeTabs} active, ${response.closedTabs} closed)`;
+                    `${totalTabs} total tabs (${activeTabs} active, ${closedTabs} closed)`;
                 document.getElementById('status').textContent = 
-                    `${response.totalSessionEntries} total entries`;
+                    `${totalEntries} total entries`;
             }
         } catch (error) {
             console.error('Error checking status:', error);
+            document.getElementById('totalTabs').textContent = 'Error loading stats';
+            document.getElementById('status').textContent = 'Check console for errors';
         }
     }
 
@@ -439,10 +460,6 @@ class TabHistoryPopup {
     truncateUrl(url, maxLength = 70) {
         if (url.length <= maxLength) return url;
         return url.substring(0, maxLength) + '...';
-    }
-
-    formatTime(timestamp) {
-        return new Date(timestamp).toLocaleTimeString();
     }
 }
 
