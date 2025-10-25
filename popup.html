@@ -78,6 +78,15 @@
             background: #d33426;
         }
         
+        .clear-closed-btn {
+            background: #fbbc05;
+            color: white;
+        }
+        
+        .clear-closed-btn:hover {
+            background: #e6a800;
+        }
+        
         .export-btn {
             background: #34a853;
             color: white;
@@ -88,7 +97,14 @@
         }
         
         .tab-refresh-btn {
-            background: #fbbc05;
+            background: #4285f4;
+            color: white;
+            padding: 4px 8px;
+            font-size: 10px;
+        }
+        
+        .debug-btn {
+            background: #666;
             color: white;
             padding: 4px 8px;
             font-size: 10px;
@@ -114,6 +130,16 @@
         .tab-section.current {
             border-color: #4285f4;
             background: #f0f7ff;
+        }
+        
+        .tab-section.closed {
+            border-color: #999;
+            background: #f0f0f0;
+            opacity: 0.8;
+        }
+        
+        .tab-section.closed .tab-header {
+            color: #666;
         }
         
         .tab-header {
@@ -225,6 +251,13 @@
             gap: 10px;
         }
         
+        .history-badge {
+            background: #f1f3f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+        }
+        
         .tree-level-0 { margin-left: 0; }
         .tree-level-1 { margin-left: 25px; }
         .tree-level-2 { margin-left: 50px; }
@@ -252,13 +285,6 @@
             border-radius: 4px;
             margin: 10px 0;
         }
-        
-        .history-badge {
-            background: #f1f3f4;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 10px;
-        }
     </style>
 </head>
 <body>
@@ -274,6 +300,7 @@
         <div class="controls">
             <button class="refresh-btn" id="refreshBtn">Refresh All</button>
             <button class="clear-btn" id="clearBtn">Clear All History</button>
+            <button class="clear-closed-btn" id="clearClosedBtn">Clear Closed Tabs</button>
             <button class="export-btn" id="exportBtn">Export Data</button>
         </div>
         

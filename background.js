@@ -5,6 +5,7 @@ class TabHistoryTracker {
     constructor() {
         this.tabHistories = new Map(); // tabId -> {tree, sessionHistory, currentIndex}
         this.tabCreationTimes = new Map(); // tabId -> creation timestamp
+        this.closedTabHistories = new Map(); // tabId -> history data (for closed tabs)
         this.init();
     }
 
@@ -31,7 +32,7 @@ class TabHistoryTracker {
             (activeInfo) => this.handleTabActivation(activeInfo)
         );
 
-        // Clean up when tabs close
+        // Handle tab closure - preserve history
         chrome.tabs.onRemoved.addListener(
             (tabId) => this.handleTabClose(tabId)
         );
@@ -78,7 +79,8 @@ class TabHistoryTracker {
                 sessionHistory: [initialEntry],
                 currentIndex: 0,
                 tree: this.createTreeNode(initialEntry, 0, true), // Create tree node immediately
-                lastUpdated: Date.now()
+                lastUpdated: Date.now(),
+                isClosed: false // Mark as active tab
             });
             console.log(`Initialized tab ${tabId} with URL: ${url}`);
         }
@@ -100,6 +102,30 @@ class TabHistoryTracker {
             const historyInfo = await this.getTabHistoryInfo(tab.id);
             await this.updateTabHistory(tab.id, tab.url, tab.title, 'activation', historyInfo);
         }
+    }
+
+    handleTabClose(tabId) {
+        console.log(`Tab ${tabId} closed, preserving history...`);
+        
+        const tabHistory = this.tabHistories.get(tabId);
+        if (tabHistory) {
+            // Move to closed tab histories instead of deleting
+            this.closedTabHistories.set(tabId, {
+                ...tabHistory,
+                closedAt: Date.now(),
+                isClosed: true
+            });
+            
+            // Remove from active tabs
+            this.tabHistories.delete(tabId);
+            this.tabCreationTimes.delete(tabId);
+            
+            console.log(`Preserved history for closed tab ${tabId} with ${tabHistory.sessionHistory.length} entries`);
+        } else {
+            console.log(`No history found for closed tab ${tabId}`);
+        }
+        
+        this.saveToStorage();
     }
 
     async getTabHistoryInfo(tabId) {
@@ -136,7 +162,8 @@ class TabHistoryTracker {
                 sessionHistory: [initialEntry],
                 currentIndex: 0,
                 tree: this.createTreeNode(initialEntry, 0, true),
-                lastUpdated: Date.now()
+                lastUpdated: Date.now(),
+                isClosed: false
             };
             this.tabHistories.set(tabId, tabHistory);
             console.log(`Created new history for tab ${tabId} with URL: ${url}`);
@@ -330,8 +357,9 @@ class TabHistoryTracker {
     getAllTabTrees() {
         const trees = [];
         
+        // Add active tabs
         for (const [tabId, tabHistory] of this.tabHistories) {
-            console.log(`Processing tab ${tabId}:`, {
+            console.log(`Processing active tab ${tabId}:`, {
                 hasTree: !!tabHistory.tree,
                 sessionLength: tabHistory.sessionHistory?.length,
                 currentIndex: tabHistory.currentIndex
@@ -343,7 +371,32 @@ class TabHistoryTracker {
                 sessionHistory: tabHistory.sessionHistory || [],
                 currentIndex: tabHistory.currentIndex || 0,
                 lastUpdated: tabHistory.lastUpdated,
-                creationTime: this.tabCreationTimes.get(tabId) || tabHistory.lastUpdated
+                creationTime: this.tabCreationTimes.get(tabId) || tabHistory.lastUpdated,
+                isClosed: false,
+                isActive: true
+            };
+
+            trees.push(treeData);
+        }
+
+        // Add closed tabs
+        for (const [tabId, tabHistory] of this.closedTabHistories) {
+            console.log(`Processing closed tab ${tabId}:`, {
+                hasTree: !!tabHistory.tree,
+                sessionLength: tabHistory.sessionHistory?.length,
+                currentIndex: tabHistory.currentIndex
+            });
+
+            const treeData = {
+                tabId: tabId,
+                tree: tabHistory.tree,
+                sessionHistory: tabHistory.sessionHistory || [],
+                currentIndex: tabHistory.currentIndex || 0,
+                lastUpdated: tabHistory.lastUpdated,
+                creationTime: this.tabCreationTimes.get(tabId) || tabHistory.lastUpdated,
+                isClosed: true,
+                closedAt: tabHistory.closedAt,
+                isActive: false
             };
 
             trees.push(treeData);
@@ -352,14 +405,8 @@ class TabHistoryTracker {
         // Sort by last updated (most recent first)
         trees.sort((a, b) => b.lastUpdated - a.lastUpdated);
         
-        console.log(`Returning ${trees.length} tab trees`);
+        console.log(`Returning ${trees.length} tab trees (${this.tabHistories.size} active, ${this.closedTabHistories.size} closed)`);
         return trees;
-    }
-
-    handleTabClose(tabId) {
-        this.tabHistories.delete(tabId);
-        this.tabCreationTimes.delete(tabId);
-        console.log(`Cleaned up history for tab ${tabId}`);
     }
 
     handleMessage(request, sender, sendResponse) {
@@ -376,7 +423,14 @@ class TabHistoryTracker {
 
             case 'clearHistory':
                 this.tabHistories.clear();
+                this.closedTabHistories.clear();
                 this.tabCreationTimes.clear();
+                this.saveToStorage();
+                sendResponse({ success: true });
+                break;
+
+            case 'clearClosedTabs':
+                this.closedTabHistories.clear();
                 this.saveToStorage();
                 sendResponse({ success: true });
                 break;
@@ -384,8 +438,12 @@ class TabHistoryTracker {
             case 'getStatus':
                 sendResponse({
                     success: true,
-                    trackedTabs: this.tabHistories.size,
+                    trackedTabs: this.tabHistories.size + this.closedTabHistories.size,
+                    activeTabs: this.tabHistories.size,
+                    closedTabs: this.closedTabHistories.size,
                     totalSessionEntries: Array.from(this.tabHistories.values())
+                        .reduce((sum, history) => sum + history.sessionHistory.length, 0) +
+                        Array.from(this.closedTabHistories.values())
                         .reduce((sum, history) => sum + history.sessionHistory.length, 0)
                 });
                 break;
@@ -408,14 +466,23 @@ class TabHistoryTracker {
 
             case 'debugInfo':
                 const debugInfo = {
-                    tabHistories: Array.from(this.tabHistories.entries()).map(([id, history]) => ({
+                    activeTabs: Array.from(this.tabHistories.entries()).map(([id, history]) => ({
                         tabId: id,
                         sessionLength: history.sessionHistory?.length,
                         hasTree: !!history.tree,
                         currentIndex: history.currentIndex,
                         tree: history.tree ? this.simplifyTreeForDebug(history.tree) : null
                     })),
-                    totalTabs: this.tabHistories.size
+                    closedTabs: Array.from(this.closedTabHistories.entries()).map(([id, history]) => ({
+                        tabId: id,
+                        sessionLength: history.sessionHistory?.length,
+                        hasTree: !!history.tree,
+                        currentIndex: history.currentIndex,
+                        closedAt: history.closedAt,
+                        tree: history.tree ? this.simplifyTreeForDebug(history.tree) : null
+                    })),
+                    totalActive: this.tabHistories.size,
+                    totalClosed: this.closedTabHistories.size
                 };
                 sendResponse({ success: true, debugInfo: debugInfo });
                 break;
@@ -445,10 +512,12 @@ class TabHistoryTracker {
         try {
             const data = {
                 tabHistories: Array.from(this.tabHistories.entries()),
+                closedTabHistories: Array.from(this.closedTabHistories.entries()),
                 tabCreationTimes: Array.from(this.tabCreationTimes.entries()),
                 lastSaved: Date.now()
             };
             await chrome.storage.local.set({ historyTrackerData: data });
+            console.log('Saved data to storage');
         } catch (error) {
             console.error('Failed to save data:', error);
         }
@@ -460,12 +529,17 @@ class TabHistoryTracker {
             if (result.historyTrackerData) {
                 const data = result.historyTrackerData;
                 this.tabHistories = new Map(data.tabHistories || []);
+                this.closedTabHistories = new Map(data.closedTabHistories || []);
                 this.tabCreationTimes = new Map(data.tabCreationTimes || []);
-                console.log(`Loaded ${this.tabHistories.size} tab histories from storage`);
+                console.log(`Loaded ${this.tabHistories.size} active and ${this.closedTabHistories.size} closed tab histories from storage`);
                 
                 // Rebuild trees for all loaded histories
                 for (const [tabId] of this.tabHistories) {
                     await this.buildTreeFromSessionHistory(tabId);
+                }
+                for (const [tabId] of this.closedTabHistories) {
+                    // For closed tabs, we already have the tree structure saved
+                    console.log(`Loaded closed tab ${tabId} history`);
                 }
             }
         } catch (error) {

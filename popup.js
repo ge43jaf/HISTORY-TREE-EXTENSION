@@ -19,6 +19,10 @@ class TabHistoryPopup {
             this.clearAllHistory();
         });
 
+        document.getElementById('clearClosedBtn').addEventListener('click', () => {
+            this.clearClosedTabs();
+        });
+
         document.getElementById('exportBtn').addEventListener('click', () => {
             this.exportData();
         });
@@ -83,7 +87,12 @@ class TabHistoryPopup {
 
     createTabSection(tabTree, currentTab) {
         const isCurrentTab = currentTab && tabTree.tabId === currentTab.id;
-        const tabTitle = isCurrentTab ? `Tab ${tabTree.tabId} (Current)` : `Tab ${tabTree.tabId}`;
+        const isClosed = tabTree.isClosed || false;
+        
+        let tabTitle = `Tab ${tabTree.tabId}`;
+        if (isCurrentTab) tabTitle += ' (Current)';
+        if (isClosed) tabTitle += ' (Closed)';
+        
         const lastUpdated = new Date(tabTree.lastUpdated).toLocaleString();
         const creationTime = new Date(tabTree.creationTime).toLocaleString();
         const sessionLength = tabTree.sessionHistory ? tabTree.sessionHistory.length : 0;
@@ -99,14 +108,15 @@ class TabHistoryPopup {
         }
         
         return `
-            <div class="tab-section ${isCurrentTab ? 'current' : ''}">
+            <div class="tab-section ${isCurrentTab ? 'current' : ''} ${isClosed ? 'closed' : ''}">
                 <div class="tab-header">
                     <span>${tabTitle}</span>
                     <span class="tab-stats">
                         <span>Created: ${creationTime}</span>
+                        ${isClosed ? `<span>Closed: ${new Date(tabTree.closedAt).toLocaleString()}</span>` : ''}
                         <span>Session: ${sessionLength} entries</span>
                         <span>Current: ${(tabTree.currentIndex || 0) + 1}/${sessionLength}</span>
-                        <button class="tab-refresh-btn" data-tab-id="${tabTree.tabId}">Refresh</button>
+                        ${!isClosed ? `<button class="tab-refresh-btn" data-tab-id="${tabTree.tabId}">Refresh</button>` : ''}
                         <button class="debug-btn" data-tab-id="${tabTree.tabId}">Debug</button>
                     </span>
                 </div>
@@ -251,7 +261,8 @@ class TabHistoryPopup {
             if (response && response.success) {
                 console.log('Debug info for all tabs:', response.debugInfo);
                 // Find the specific tab in debug info
-                const tabDebugInfo = response.debugInfo.tabHistories.find(tab => tab.tabId === tabId);
+                const tabDebugInfo = response.debugInfo.activeTabs.find(tab => tab.tabId === tabId) || 
+                                   response.debugInfo.closedTabs.find(tab => tab.tabId === tabId);
                 if (tabDebugInfo) {
                     console.log(`Debug info for tab ${tabId}:`, tabDebugInfo);
                     alert(`Check console for debug info for tab ${tabId}`);
@@ -262,6 +273,27 @@ class TabHistoryPopup {
         } catch (error) {
             console.error('Error getting debug info:', error);
             alert('Error getting debug info');
+        }
+    }
+
+    async clearClosedTabs() {
+        if (!confirm('Are you sure you want to clear all closed tab histories? This cannot be undone.')) {
+            return;
+        }
+
+        try {
+            const response = await chrome.runtime.sendMessage({ action: 'clearClosedTabs' });
+            
+            if (response && response.success) {
+                await this.loadTabTrees(); // Reload to reflect changes
+                this.checkStatus();
+                alert('Closed tab histories cleared successfully');
+            } else {
+                alert('Failed to clear closed tab histories');
+            }
+        } catch (error) {
+            console.error('Error clearing closed tabs:', error);
+            alert('Error clearing closed tab histories');
         }
     }
 
@@ -291,9 +323,9 @@ class TabHistoryPopup {
             const response = await chrome.runtime.sendMessage({ action: 'getStatus' });
             if (response && response.success) {
                 document.getElementById('totalTabs').textContent = 
-                    `${response.trackedTabs} tabs tracked`;
+                    `${response.trackedTabs} total tabs (${response.activeTabs} active, ${response.closedTabs} closed)`;
                 document.getElementById('status').textContent = 
-                    `${response.totalSessionEntries} session entries`;
+                    `${response.totalSessionEntries} total entries`;
             }
         } catch (error) {
             console.error('Error checking status:', error);
@@ -301,11 +333,14 @@ class TabHistoryPopup {
     }
 
     updateStats() {
+        const activeTabs = this.tabTrees.filter(tab => !tab.isClosed).length;
+        const closedTabs = this.tabTrees.filter(tab => tab.isClosed).length;
         const totalEntries = this.tabTrees.reduce((sum, tab) => 
             sum + (tab.sessionHistory ? tab.sessionHistory.length : 0), 0
         );
+        
         document.getElementById('totalTabs').textContent = 
-            `${this.tabTrees.length} tabs with history`;
+            `${this.tabTrees.length} total tabs (${activeTabs} active, ${closedTabs} closed)`;
         document.getElementById('status').textContent = 
             `${totalEntries} total entries`;
     }
@@ -323,7 +358,7 @@ class TabHistoryPopup {
     }
 
     async clearAllHistory() {
-        if (!confirm('Are you sure you want to clear ALL tab history? This cannot be undone.')) {
+        if (!confirm('Are you sure you want to clear ALL tab history (both active and closed tabs)? This cannot be undone.')) {
             return;
         }
 
