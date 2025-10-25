@@ -30,6 +30,7 @@
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             margin-bottom: 15px;
+            position: relative;
         }
         
         .header h1 {
@@ -69,22 +70,13 @@
             background: #3367d6;
         }
         
-        .clear-btn {
-            background: #ea4335;
+        .options-btn {
+            background: #5f6368;
             color: white;
         }
         
-        .clear-btn:hover {
-            background: #d33426;
-        }
-        
-        .clear-closed-btn {
-            background: #fbbc05;
-            color: white;
-        }
-        
-        .clear-closed-btn:hover {
-            background: #e6a800;
+        .options-btn:hover {
+            background: #4a4d52;
         }
         
         .export-btn {
@@ -285,6 +277,62 @@
             border-radius: 4px;
             margin: 10px 0;
         }
+        
+        /* Options Menu Styles */
+        .options-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 10px;
+            z-index: 1000;
+            min-width: 200px;
+        }
+        
+        .options-menu.show {
+            display: block;
+        }
+        
+        .options-menu button {
+            width: 100%;
+            margin-bottom: 5px;
+            text-align: left;
+        }
+        
+        .options-menu button:last-child {
+            margin-bottom: 0;
+        }
+        
+        .clear-all-btn {
+            background: #ea4335;
+            color: white;
+        }
+        
+        .clear-all-btn:hover {
+            background: #d33426;
+        }
+        
+        .clear-closed-btn {
+            background: #fbbc05;
+            color: white;
+        }
+        
+        .clear-closed-btn:hover {
+            background: #e6a800;
+        }
+        
+        .close-options-btn {
+            background: #5f6368;
+            color: white;
+        }
+        
+        .close-options-btn:hover {
+            background: #4a4d52;
+        }
     </style>
 </head>
 <body>
@@ -295,12 +343,16 @@
                 <span id="totalTabs">Loading...</span>
                 <span id="status">Initializing...</span>
             </div>
+            <div class="options-menu" id="optionsMenu">
+                <button class="clear-all-btn" id="clearAllBtn">Clear All History</button>
+                <button class="clear-closed-btn" id="clearClosedBtn">Clear Closed Tabs</button>
+                <button class="close-options-btn" id="closeOptionsBtn">Close Menu</button>
+            </div>
         </div>
         
         <div class="controls">
             <button class="refresh-btn" id="refreshBtn">Refresh All</button>
-            <button class="clear-btn" id="clearBtn">Clear All History</button>
-            <button class="clear-closed-btn" id="clearClosedBtn">Clear Closed Tabs</button>
+            <button class="options-btn" id="optionsBtn">Options</button>
             <button class="export-btn" id="exportBtn">Export Data</button>
         </div>
         

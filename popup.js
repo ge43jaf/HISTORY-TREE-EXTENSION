@@ -15,17 +15,46 @@ class TabHistoryPopup {
             this.loadTabTrees();
         });
 
-        document.getElementById('clearBtn').addEventListener('click', () => {
+        document.getElementById('optionsBtn').addEventListener('click', () => {
+            this.toggleOptionsMenu();
+        });
+
+        document.getElementById('closeOptionsBtn').addEventListener('click', () => {
+            this.hideOptionsMenu();
+        });
+
+        document.getElementById('clearAllBtn').addEventListener('click', () => {
             this.clearAllHistory();
+            this.hideOptionsMenu();
         });
 
         document.getElementById('clearClosedBtn').addEventListener('click', () => {
             this.clearClosedTabs();
+            this.hideOptionsMenu();
         });
 
         document.getElementById('exportBtn').addEventListener('click', () => {
             this.exportData();
         });
+
+        // Close options menu when clicking outside
+        document.addEventListener('click', (e) => {
+            const optionsMenu = document.getElementById('optionsMenu');
+            const optionsBtn = document.getElementById('optionsBtn');
+            if (!optionsMenu.contains(e.target) && !optionsBtn.contains(e.target)) {
+                this.hideOptionsMenu();
+            }
+        });
+    }
+
+    toggleOptionsMenu() {
+        const optionsMenu = document.getElementById('optionsMenu');
+        optionsMenu.classList.toggle('show');
+    }
+
+    hideOptionsMenu() {
+        const optionsMenu = document.getElementById('optionsMenu');
+        optionsMenu.classList.remove('show');
     }
 
     async loadTabTrees() {
@@ -297,6 +326,29 @@ class TabHistoryPopup {
         }
     }
 
+    async clearAllHistory() {
+        if (!confirm('Are you sure you want to clear ALL tab history (both active and closed tabs)? This cannot be undone.')) {
+            return;
+        }
+
+        try {
+            const response = await chrome.runtime.sendMessage({ action: 'clearHistory' });
+            
+            if (response && response.success) {
+                this.tabTrees = [];
+                this.displayTabTrees();
+                this.updateStats();
+                this.checkStatus();
+                alert('All history cleared successfully');
+            } else {
+                alert('Failed to clear history');
+            }
+        } catch (error) {
+            console.error('Error clearing history:', error);
+            alert('Error clearing history');
+        }
+    }
+
     getNodeTypeLabel(type) {
         const labels = {
             'initial': 'Initial',
@@ -355,28 +407,6 @@ class TabHistoryPopup {
         document.getElementById('tabsContainer').innerHTML = `
             <div class="error">${message}</div>
         `;
-    }
-
-    async clearAllHistory() {
-        if (!confirm('Are you sure you want to clear ALL tab history (both active and closed tabs)? This cannot be undone.')) {
-            return;
-        }
-
-        try {
-            const response = await chrome.runtime.sendMessage({ action: 'clearHistory' });
-            
-            if (response && response.success) {
-                this.tabTrees = [];
-                this.displayTabTrees();
-                this.updateStats();
-                this.checkStatus();
-            } else {
-                alert('Failed to clear history');
-            }
-        } catch (error) {
-            console.error('Error clearing history:', error);
-            alert('Error clearing history');
-        }
     }
 
     async exportData() {
