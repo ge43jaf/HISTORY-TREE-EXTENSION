@@ -135,7 +135,9 @@ class TabHistoryPopup {
             // If we have session history but no tree, show the linear history
             treeContent = this.renderLinearHistory(tabTree);
         } else {
+
             treeContent = '<div class="empty-state">No history data available</div>';
+            
         }
         
         return `
